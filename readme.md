@@ -1,8 +1,8 @@
 # Proactive Node Scaling Operator
 
-![build status](https://github.com/redhat-cop/proactive-node-scaling-operator/workflows/push/badge.svg)
-[![Go Report Card](https://goreportcard.com/badge/github.com/redhat-cop/proactive-node-scaling-operator)](https://goreportcard.com/report/github.com/redhat-cop/proactive-node-scaling-operator)
-![GitHub go.mod Go version](https://img.shields.io/github/go-mod/go-version/redhat-cop/proactive-node-scaling-operator)
+[![Build status](https://github.com/sub-mod/proactive-node-scaling-operator/actions/workflows/push.yaml/badge.svg)](https://github.com/sub-mod/proactive-node-scaling-operator/actions/workflows/push.yaml)
+[![Go code quality](https://github.com/sub-mod/proactive-node-scaling-operator/actions/workflows/quality.yaml/badge.svg)](https://github.com/sub-mod/proactive-node-scaling-operator/actions/workflows/quality.yaml)
+[![Go version](https://img.shields.io/github/go-mod/go-version/sub-mod/proactive-node-scaling-operator)](https://github.com/sub-mod/proactive-node-scaling-operator/blob/master/go.mod)
 
 This operator makes the [cluster autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler) more proactive. As of now the cluster auto scaler will create new nodes only when a pod is pending because it cannot be allocated due to lack of capacity. This is not a good user experience as the pending workload has to wait for several minutes as the new node is create and joins the cluster.
 
@@ -136,6 +136,65 @@ exit
 ```
 
 ## Development
+
+### Repository health and security
+
+This repository follows the maintenance practices used by the
+[Custom Metrics Autoscaler Operator](https://github.com/openshift/custom-metrics-autoscaler-operator):
+pinned tools, coordinated dependency updates, generated-file checks, separate
+unit and API tests, and a nonroot runtime image. CI uses GitHub Actions; the
+OpenShift-specific Prow, Konflux, and catalog release infrastructure is not
+required here. Dependency versions follow this operator's `operator-utils`
+compatibility requirements rather than copying CMA's versions.
+
+The operator module requires Go 1.26.10. The container builder and isolated
+metrics-proxy module use Go 1.27.3. Run the checks locally with:
+
+```shell
+make health             # module verification, vet, build, and race-enabled unit tests
+make test-integration   # CRD defaults, validation, reconciliation, and status updates
+make security           # known vulnerabilities in imported operator and proxy packages
+make manifests generate # regenerate CRD, RBAC, and deepcopy files
+```
+
+Integration tests download pinned envtest tooling and Kubernetes 1.28.0 binaries
+and start a temporary local API server. They do not require a cluster. They do
+not verify cloud-provider capacity allocation or end-to-end autoscaling; test
+those behaviors on your target Kubernetes/OpenShift environment.
+
+GitHub Actions checks pull requests, branch pushes, and tags, with additional
+weekly and manual health runs. CI tests Go 1.26.10 and 1.27.3, checks generated
+files, builds the runtime image, and scans for vulnerabilities. Dependabot
+proposes weekly Go, Actions, and container updates, grouping the Kubernetes
+modules and `operator-utils` for coordinated review.
+
+CI fails on known vulnerabilities in imported Go packages and runtime OS
+packages. Full image module scans are also reported. They currently include
+[GO-2026-5932](https://pkg.go.dev/vuln/GO-2026-5932), an advisory with no fixed
+version for `golang.org/x/crypto/openpgp`. Neither the operator nor the bundled
+proxy imports those OpenPGP packages. The advisory remains visible and is not
+suppressed. Scan results reflect the advisory database at the time of each run.
+
+Build and publish the updated image before deployment: it contains both
+`/manager` and the rebuilt `/kube-rbac-proxy`. Helm and Kustomize use that image
+for both containers. The default pause image is pinned to
+`registry.k8s.io/pause:3.10.2`. For example:
+
+```shell
+make docker-build docker-push IMG=<your-image>:<tag>
+make deploy IMG=<your-image>:<tag>
+```
+
+Pushes and tags currently validate the repository; they do not publish images,
+Helm charts, bundles, or OperatorHub changes. Release publishing requires a
+separate workflow. Before upgrading an existing installation, review the
+inherited `status.lockedPatchStatuses` field: the updated utility library uses a
+nested map for that field.
+
+The README badges show this fork's build status, Go formatting/vet results, and
+the default branch's Go version. The code-quality badge replaces the retired
+[hosted Go Report Card service](https://goreportcard.com/). The Go-version badge
+reflects dependency changes after they are merged into the default branch.
 
 ### Running the operator locally
 
